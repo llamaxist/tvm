@@ -179,7 +179,7 @@ export class ArtifactIndexedDBCache implements ArtifactCacheTemplate {
   /**
    * Init the indexed DB database if it is not initialized.
    */
-  private async initDB() {
+  protected async initDB() {
     if (this.db != null) {
       return; // the db is already inialized
     }
@@ -207,7 +207,7 @@ export class ArtifactIndexedDBCache implements ArtifactCacheTemplate {
    * @param url the url link
    * @returns boolean indicate if url object in indexedDB
    */
-  private async isUrlInDB(url: string): Promise<boolean> {
+  protected async isUrlInDB(url: string): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
       const transaction = this.db?.transaction(['urls'], 'readonly');
       if (transaction === undefined) {
@@ -350,6 +350,35 @@ export class ArtifactIndexedDBCache implements ArtifactCacheTemplate {
   }
 }
 
+// A cache that supports partitioned shards
+export class PartitionedArtifactCache extends ArtifactIndexedDBCache {
+  constructor(dbName: string) {
+    super(dbName);
+  }
+  async addToCache(url: string, storetype?: string): Promise<void> {
+    console.log(`> PartitionedArtifactCache.addToCache: ${url}`)
+    await this.initDB(); // await the initDB process
+    // If already cached, nothing to do
+    const isInDB = await this.isUrlInDB(url);
+    if (isInDB) {
+      return;
+    }
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const response_copy = response.clone();
+      await this.addToIndexedDB(url, response_copy, storetype);
+    } catch (error) {
+      throw Error("Failed to store " + url + " with error: " + error);
+    }
+  }
+  async asyncGetHelper(url: string): Promise<any> {
+    console.log(`> PartitionedArtifactCache.asyncGetHelper: ${url}`)
+    return super.asyncGetHelper(url);
+  }
+}
 
 /**
  * Function to check if NDarray is in Cache or not

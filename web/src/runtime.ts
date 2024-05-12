@@ -30,7 +30,7 @@ import { FunctionInfo, WebGPUContext } from "./webgpu";
 import {
   ArtifactCache,
   ArtifactCacheTemplate,
-  ArtifactIndexedDBCache,
+  PartitionedArtifactCache,
   NDArrayShardEntry,
 } from "./artifact_cache";
 import * as compact from "./compact";
@@ -1443,7 +1443,7 @@ export class Instance implements Disposable {
     if (cacheType === undefined || cacheType.toLowerCase() === "cache") {
       artifactCache = new ArtifactCache(cacheScope);
     } else if (cacheType.toLowerCase() == "indexeddb") {
-      artifactCache = new ArtifactIndexedDBCache(cacheScope);
+      artifactCache = new PartitionedArtifactCache(cacheScope);
     } else {
       console.error("Unsupported cacheType: " + cacheType + ", using default ArtifactCache.");
       artifactCache = new ArtifactCache(cacheScope);
