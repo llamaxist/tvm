@@ -1522,6 +1522,7 @@ export class Instance implements Disposable {
       // Download params [start, end) from `list`
       for (let i = start; i < end; i++) {
         const shard = list[i];
+        console.log("> Downloading shard: " + JSON.stringify(shard))
         const dataUrl = new URL(shard.dataPath, ndarrayCacheUrl).href;
         try {
           await artifactCache.addToCache(dataUrl, "arraybuffer");
