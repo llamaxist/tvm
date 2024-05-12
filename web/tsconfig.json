@@ -1,13 +1,23 @@
 {
-    "compilerOptions": {
+	"compilerOptions": {
 		"target": "es6",
 		"outDir": "lib",
-		"types": ["node", "@webgpu/types"],
+		"types": [
+			"node",
+			"@webgpu/types"
+		],
 		"rootDir": "src",
 		"declaration": true,
 		"sourceMap": true,
 		"skipLibCheck": true,
+		"lib": [
+			"es2017"
+		],
 	},
-    "include": ["src"],
-    "exclude": ["**/node_modules/**"]
+	"include": [
+		"src"
+	],
+	"exclude": [
+		"**/node_modules/**"
+	]
 }

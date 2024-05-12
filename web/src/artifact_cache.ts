@@ -170,7 +170,7 @@ export class ArtifactCache implements ArtifactCacheTemplate {
 export class ArtifactIndexedDBCache implements ArtifactCacheTemplate {
   private dbName?: string;
   private dbVersion = 1;
-  private db: IDBDatabase | undefined;
+  protected db: IDBDatabase | undefined;
 
   constructor(dbName: string) {
     this.dbName = dbName;
@@ -355,25 +355,90 @@ export class PartitionedArtifactCache extends ArtifactIndexedDBCache {
   constructor(dbName: string) {
     super(dbName);
   }
+  mergeArrayBuffers(buffers: ArrayBuffer[]): ArrayBuffer {
+    const totalLength = buffers.reduce((acc, buffer) => acc + buffer.byteLength, 0);
+    const joinedBuffer = new ArrayBuffer(totalLength);
+    let offset = 0;
+    for (const buffer of buffers) {
+      const view = new Uint8Array(joinedBuffer, offset);
+      view.set(new Uint8Array(buffer));
+      offset += buffer.byteLength;
+    }
+
+    return joinedBuffer;
+  }
+
+  generateArray(n: number) {
+    return Array.from({ length: n }, (_, i) => i);
+  }
+
+  async fetchPartitionsAndJoin(baseUrl: string, partitions: number): Promise<ArrayBuffer> {
+    console.log(`> PartitionedArtifactCache.fetchPartitionsAndJoin: baseUrl=${baseUrl} partitions=${partitions}`)
+    const partitionArray = this.generateArray(partitions);
+    const promises = partitionArray.map(async (partition) => {
+      const url = baseUrl + partition.toString().padStart(2, "0");
+      console.log(`> PartitionedArtifactCache.fetchPartitionsAndJoin#partition:url=${url} partition=${partition}`)
+      const response = await fetch(url);
+
+      // Check for successful response
+      if (!response.ok) {
+        throw new Error(`Error fetching file ${partition}: ${response.statusText}`);
+      }
+
+      // Get the binary data (may require conversion depending on your environment)
+      const data = await response.arrayBuffer();  // Or response.arrayBuffer()
+
+      return data;
+    });
+
+    // Wait for all promises to resolve and join the data
+    const joinedData = await Promise.all(promises);
+    return Promise.resolve(this.mergeArrayBuffers(joinedData));
+  }
+
   async addToCache(url: string, storetype?: string): Promise<void> {
     console.log(`> PartitionedArtifactCache.addToCache: ${url}`)
+    const theURL = new URL(url);
+    const params = new URLSearchParams(theURL.search);
+    let partitions = parseInt(params.get("partitions"));
+
+    if (Number.isNaN(partitions) || storetype != "arraybuffer") {
+      return super.addToCache(url, storetype)
+    }
+
+    theURL.search = "";
+    const baseURL = theURL.toString();
+
     await this.initDB(); // await the initDB process
     // If already cached, nothing to do
     const isInDB = await this.isUrlInDB(url);
     if (isInDB) {
       return;
     }
+
     try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
-      }
-      const response_copy = response.clone();
-      await this.addToIndexedDB(url, response_copy, storetype);
+      const data = await this.fetchPartitionsAndJoin(baseURL, partitions);
+      await this.addToIndexedDB(url, data);
     } catch (error) {
       throw Error("Failed to store " + url + " with error: " + error);
     }
   }
+
+  async addToIndexedDB(url: string, data: ArrayBuffer) {
+    await this.initDB();
+    // IndexedDB, unlike the Cache API, stores the actual data object, so we convert response here.
+    return new Promise<void>((resolve, reject) => {
+      const transaction = this.db?.transaction(['urls'], 'readwrite');
+      if (transaction === undefined) {
+        return;
+      }
+      const store = transaction.objectStore('urls');
+      const request = store.add({ data, url }); // Index DB follows a {value, key} format, instead of {key, value} format!
+      request.onsuccess = () => resolve();
+      request.onerror = (event) => reject((event.target as IDBRequest).error);
+    });
+  }
+
   async asyncGetHelper(url: string): Promise<any> {
     console.log(`> PartitionedArtifactCache.asyncGetHelper: ${url}`)
     return super.asyncGetHelper(url);
