@@ -28,6 +28,7 @@ export {
   ArtifactCacheTemplate,
   ArtifactCache,
   ArtifactIndexedDBCache,
+  PartitionedArtifactCache,
   hasNDArrayInCache,
   deleteNDArrayCache
 } from "./artifact_cache";
