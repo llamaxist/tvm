@@ -372,11 +372,21 @@ export class PartitionedArtifactCache extends ArtifactIndexedDBCache {
     return Array.from({ length: n }, (_, i) => i);
   }
 
+  formatNumberString(num: number): string {
+    const numString = num.toString();
+    if (numString.length === 1) {
+      return "0" + numString;
+    } else {
+      return numString;
+    }
+  }
+
+
   async fetchPartitionsAndJoin(baseUrl: string, partitions: number): Promise<ArrayBuffer> {
     console.log(`> PartitionedArtifactCache.fetchPartitionsAndJoin: baseUrl=${baseUrl} partitions=${partitions}`)
     const partitionArray = this.generateArray(partitions);
-    const promises = partitionArray.map(async (partition) => {
-      const url = baseUrl + partition.toString().padStart(2, "0");
+    const promises = partitionArray.map(async (partition: number) => {
+      const url = baseUrl + this.formatNumberString(partition);
       console.log(`> PartitionedArtifactCache.fetchPartitionsAndJoin#partition:url=${url} partition=${partition}`)
       const response = await fetch(url);
 
