@@ -267,7 +267,7 @@ export class ArtifactIndexedDBCache implements ArtifactCacheTemplate {
       } else if (storetype.toLocaleLowerCase() === "arraybuffer") {
         data = await response.arrayBuffer();
       } else {
-        throw Error("Unsupported storetyp for IndexedDB: " + storetype);
+        throw Error("Unsupported storetype for IndexedDB: " + storetype);
       }
     }
     return new Promise<void>((resolve, reject) => {
@@ -355,6 +355,7 @@ export class PartitionedArtifactCache extends ArtifactIndexedDBCache {
   constructor(dbName: string) {
     super(dbName);
   }
+
   mergeArrayBuffers(buffers: ArrayBuffer[]): ArrayBuffer {
     const totalLength = buffers.reduce((acc, buffer) => acc + buffer.byteLength, 0);
     const joinedBuffer = new ArrayBuffer(totalLength);
@@ -381,18 +382,17 @@ export class PartitionedArtifactCache extends ArtifactIndexedDBCache {
     }
   }
 
-
   async fetchPartitionsAndJoin(baseUrl: string, partitions: number): Promise<ArrayBuffer> {
-    console.log(`> PartitionedArtifactCache.fetchPartitionsAndJoin: baseUrl=${baseUrl} partitions=${partitions}`)
+    console.log(`Fetching partitioned shard: url=${baseUrl}, partitions=${partitions}...`);
     const partitionArray = this.generateArray(partitions);
     const promises = partitionArray.map(async (partition: number) => {
-      const url = baseUrl + this.formatNumberString(partition);
-      console.log(`> PartitionedArtifactCache.fetchPartitionsAndJoin#partition:url=${url} partition=${partition}`)
+      const suffix = this.formatNumberString(partition);
+      const url = `${baseUrl}_${suffix}`;
       const response = await fetch(url);
 
       // Check for successful response
       if (!response.ok) {
-        throw new Error(`Error fetching file ${partition}: ${response.statusText}`);
+        throw new Error(`Error fetching file ${url}: ${response.statusText}`);
       }
 
       // Get the binary data (may require conversion depending on your environment)
@@ -407,10 +407,9 @@ export class PartitionedArtifactCache extends ArtifactIndexedDBCache {
   }
 
   async addToCache(url: string, storetype?: string): Promise<void> {
-    console.log(`> PartitionedArtifactCache.addToCache: ${url}`)
     const theURL = new URL(url);
     const params = new URLSearchParams(theURL.search);
-    let partitions = parseInt(params.get("partitions"));
+    const partitions = parseInt(params.get("partitions"));
 
     if (Number.isNaN(partitions) || storetype != "arraybuffer") {
       return super.addToCache(url, storetype)
@@ -428,31 +427,23 @@ export class PartitionedArtifactCache extends ArtifactIndexedDBCache {
 
     try {
       const data = await this.fetchPartitionsAndJoin(baseURL, partitions);
-      await this.addToIndexedDB(url, data);
+
+      // IndexedDB, unlike the Cache API, stores the actual data object, so we convert response here.
+      return new Promise<void>((resolve, reject) => {
+        const transaction = this.db?.transaction(['urls'], 'readwrite');
+        if (transaction === undefined) {
+          return;
+        }
+        const store = transaction.objectStore('urls');
+        const request = store.add({ data, url }); // Index DB follows a {value, key} format, instead of {key, value} format!
+        request.onsuccess = () => resolve();
+        request.onerror = (event) => reject((event.target as IDBRequest).error);
+      });
     } catch (error) {
       throw Error("Failed to store " + url + " with error: " + error);
     }
   }
 
-  async addToIndexedDB(url: string, data: ArrayBuffer) {
-    await this.initDB();
-    // IndexedDB, unlike the Cache API, stores the actual data object, so we convert response here.
-    return new Promise<void>((resolve, reject) => {
-      const transaction = this.db?.transaction(['urls'], 'readwrite');
-      if (transaction === undefined) {
-        return;
-      }
-      const store = transaction.objectStore('urls');
-      const request = store.add({ data, url }); // Index DB follows a {value, key} format, instead of {key, value} format!
-      request.onsuccess = () => resolve();
-      request.onerror = (event) => reject((event.target as IDBRequest).error);
-    });
-  }
-
-  async asyncGetHelper(url: string): Promise<any> {
-    console.log(`> PartitionedArtifactCache.asyncGetHelper: ${url}`)
-    return super.asyncGetHelper(url);
-  }
 }
 
 /**
